@@ -16,3 +16,8 @@
 - 👤 [Explore the creator's projects](https://go.ondev.store/mustafacangezici13-cell).
 - 🌍 [Create with OMGithub](https://go.ondev.store/).
 <!-- omgithub:readme:end -->
+
+## The Chess Club
+
+A browser chess game against ten fictional opponents. Open `index.html` through a local web server (for example, `python3 -m http.server`) and visit the server address. Select a bot to start a fresh game; select a piece and a highlighted square to move. The displayed Elo values are difficulty labels, not measured tournament ratings.
+
