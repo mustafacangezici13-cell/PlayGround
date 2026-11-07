@@ -127,30 +127,147 @@ function evaluateWhite(p){
     score+=(c==='w'?1:-1)*(MATERIAL[t]+pos);
   }return score;
 }
-function moveOrderScore(p,m){const attacker=typeOf(p.board[m.from]),target=p.board[m.to];return(target?10*MATERIAL[typeOf(target)]-MATERIAL[attacker]:0)+(m.promotion?MATERIAL[m.promotion]+800:0);}
+function moveOrderScore(p,m){
+  const attacker=typeOf(p.board[m.from]),target=p.board[m.to]||(attacker==='P'&&m.to===p.enPassant?'bP':null);
+  return(target?10*MATERIAL[typeOf(target)]-MATERIAL[attacker]:0)+(m.promotion?MATERIAL[m.promotion]+800:0);
+}
 function orderedMoves(p,moves){return moves.sort((a,b)=>moveOrderScore(p,b)-moveOrderScore(p,a));}
-function search(p,depth,alpha,beta,ply,state){
-  state.nodes++;const key=repetitionKey(p);
+function sideEvaluation(p){return evaluateWhite(p)*(p.turn==='w'?1:-1);}
+function quiescence(p,alpha,beta,ply,state,qply=0){
+  if(++state.nodes>=state.nodeLimit)return sideEvaluation(p);
+  const key=repetitionKey(p),checked=isInCheck(p,p.turn);
   if((p.repetitionCounts?.[key]||0)+(state.pathCounts[key]||0)>=3||(p.halfmoveClock||0)>=100||isInsufficientMaterial(p))return 0;
-  const moves=legalMoves(p),checked=isInCheck(p,p.turn);if(!moves.length)return checked?-100000+ply:0;
-  if(depth<=0||state.nodes>=state.nodeLimit)return evaluateWhite(p)*(p.turn==='w'?1:-1)+(checked?-25:0);
-  let best=-Infinity;for(const m of orderedMoves(p,moves)){
+  const allMoves=legalMoves(p);
+  if(!allMoves.length)return checked?-100000+ply:0;
+  let best=-Infinity;
+  if(!checked){
+    best=sideEvaluation(p);
+    if(best>=beta)return best;
+    if(best>alpha)alpha=best;
+    if(qply>=8)return best;
+  }
+  const tactical=checked?allMoves:allMoves.filter(m=>p.board[m.to]||(m.to===p.enPassant&&typeOf(p.board[m.from])==='P'&&m.from[0]!==m.to[0])||m.promotion);
+  for(const m of orderedMoves(p,tactical)){
+    const child=applyUnchecked(p,m,false),childKey=repetitionKey(child);state.pathCounts[childKey]=(state.pathCounts[childKey]||0)+1;
+    const score=-quiescence(child,-beta,-alpha,ply+1,state,qply+1);state.pathCounts[childKey]--;
+    if(!state.pathCounts[childKey])delete state.pathCounts[childKey];
+    if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit)break;
+  }
+  return best;
+}
+function search(p,depth,alpha,beta,ply,state){
+  if(++state.nodes>=state.nodeLimit)return sideEvaluation(p);
+  const key=repetitionKey(p),checked=isInCheck(p,p.turn);
+  if((p.repetitionCounts?.[key]||0)+(state.pathCounts[key]||0)>=3||(p.halfmoveClock||0)>=100||isInsufficientMaterial(p))return 0;
+  const moves=legalMoves(p);if(!moves.length)return checked?-100000+ply:0;
+  if(depth<=0)return quiescence(p,alpha,beta,ply,state);
+  let best=-Infinity;
+  for(const m of orderedMoves(p,moves)){
     const child=applyUnchecked(p,m,false),childKey=repetitionKey(child);state.pathCounts[childKey]=(state.pathCounts[childKey]||0)+1;
     const score=-search(child,depth-1,-beta,-alpha,ply+1,state);state.pathCounts[childKey]--;
     if(!state.pathCounts[childKey])delete state.pathCounts[childKey];if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit)break;
-  }return best;
+  }
+  return best;
 }
-/** Choose a legal move; strength is 1–5 or {level, random}. Returns null if game over. */
+/** Choose a legal move; strength is 1–7 or {level, random}. Returns null if game over. */
 export function getBotMove(p,strength=2,options={}){
-  normalizePosition(p);const level=Math.max(1,Math.min(5,Math.round(typeof strength==='object'?(strength.level??2):strength)));
+  normalizePosition(p);const level=Math.max(1,Math.min(7,Math.round(typeof strength==='object'?(strength.level??2):strength)));
   const random=(typeof strength==='object'&&strength.random)||options.random||Math.random,moves=orderedMoves(p,legalMoves(p));
   if(!moves.length||getStatus(p).over)return null;
   if(level===1){const ranked=moves.map(m=>({move:m,score:evaluateWhite(applyUnchecked(p,m,false))*(p.turn==='w'?1:-1)+(moveOrderScore(p,m)>0?20:0)})).sort((a,b)=>b.score-a.score);
     const shortlist=ranked.slice(0,Math.max(1,Math.ceil(ranked.length*.55)));return shortlist[Math.floor(random()*shortlist.length)].move;}
-  const depth=level===2?2:level===3?3:4,state={nodes:0,nodeLimit:level>=5?18000:level===4?12000:10000,pathCounts:{}};let bestScore=-Infinity,best=[],alpha=-Infinity,beta=Infinity;
-  for(const m of moves){const child=applyUnchecked(p,m,false),key=repetitionKey(child);state.pathCounts[key]=(state.pathCounts[key]||0)+1;
-    const score=-search(child,depth-1,-beta,-alpha,1,state);state.pathCounts[key]--;if(!state.pathCounts[key])delete state.pathCounts[key];
-    if(score>bestScore){bestScore=score;best=[m];}else if(score===bestScore)best.push(m);if(score>alpha)alpha=score;if(state.nodes>=state.nodeLimit)break;}
-  if(level<=3&&best.length>1)return best[Math.floor(random()*best.length)];return best[0]||moves[0]||null;
+  const configs={2:{depth:2,nodes:7000},3:{depth:3,nodes:16000},4:{depth:4,nodes:32000},5:{depth:5,nodes:55000},6:{depth:6,nodes:90000},7:{depth:7,nodes:130000}};
+  const {depth:maxDepth,nodes:nodeLimit}=configs[level];let best=moves[0],bestScore=-Infinity,completedDepth=0,rootScores=new Map();
+  for(let depth=1;depth<=maxDepth;depth++){
+    const state={nodes:0,nodeLimit,pathCounts:{}},ordered=orderedMoves(p,[...moves]);let iterationBest=ordered[0],iterationScore=-Infinity,alpha=-Infinity,beta=Infinity;const iterationScores=new Map();
+    for(const m of ordered){
+      const child=applyUnchecked(p,m,false),key=repetitionKey(child);state.pathCounts[key]=(state.pathCounts[key]||0)+1;
+      const score=-search(child,depth-1,-beta,-alpha,1,state);state.pathCounts[key]--;if(!state.pathCounts[key])delete state.pathCounts[key];
+      iterationScores.set(moveKey(m),score);
+      if(score>iterationScore){iterationScore=score;iterationBest=m;}if(score>alpha)alpha=score;
+      if(state.nodes>=nodeLimit)break;
+    }
+    if(state.nodes>=nodeLimit&&depth>1)break;
+    best=iterationBest;bestScore=iterationScore;rootScores=iterationScores;completedDepth=depth;
+    if(Math.abs(iterationScore)>99000)break;
+  }
+  const book=bookOptions(options.history||[]);
+  if(book.moves.size&&completedDepth){
+    const bookMove=moves.find(move=>book.moves.has(moveKey(move))),bookScore=bookMove&&rootScores.get(moveKey(bookMove));
+    // Keep book moves only when the searched position says they are close to best.
+    if(bookMove&&bookScore!==undefined&&bookScore>=bestScore-110)return bookMove;
+  }
+  if(level<=3&&completedDepth<=2){const nearBest=moves.filter(m=>moveOrderScore(p,m)>=moveOrderScore(p,best)-30);return nearBest[Math.floor(random()*nearBest.length)]||best;}
+  return best;
 }
 export const botMove=getBotMove;
+
+const OPENING_BOOK = [
+  { name: 'Ruy Lopez', moves: ['e2e4','e7e5','g1f3','b8c6','f1b5','a7a6','b5a4','g8f6','e1g1','f8e7'] },
+  { name: 'Italian Game', moves: ['e2e4','e7e5','g1f3','b8c6','f1c4','f8c5','c2c3','g8f6','d2d4','e5d4'] },
+  { name: 'Queen’s Gambit Declined', moves: ['d2d4','d7d5','c2c4','e7e6','b1c3','g8f6','c1g5','f8e7','e2e3','e8g8'] },
+  { name: 'Sicilian Defense', moves: ['e2e4','c7c5','g1f3','d7d6','d2d4','c5d4','f3d4','g8f6','b1c3','b8c6'] },
+  { name: 'French Defense', moves: ['e2e4','e7e6','d2d4','d7d5','b1c3','g8f6','e4e5','f6d7','f2f4','c7c5'] },
+  { name: 'Caro-Kann Defense', moves: ['e2e4','c7c6','d2d4','d7d5','b1c3','d5e4','c3e4','c8f5','e4g3','f5g6'] },
+  { name: 'London System', moves: ['d2d4','d7d5','g1f3','g8f6','c1f4','e7e6','e2e3','c7c5','c2c3','b8c6'] },
+  { name: 'King’s Indian Defense', moves: ['d2d4','g8f6','c2c4','g7g6','b1c3','f8g7','e2e4','d7d6','g1f3','e8g8'] },
+  { name: 'Scotch Game', moves: ['e2e4','e7e5','g1f3','b8c6','d2d4','e5d4','f3d4','g8f6','b1c3','f8b4'] },
+];
+const moveKey = move => `${move.from}${move.to}${move.promotion || ''}`;
+function bookOptions(history = []) {
+  const prefix = history.map(moveKey);
+  const lines = OPENING_BOOK.filter(line => prefix.length < line.moves.length && prefix.every((key, index) => line.moves[index] === key));
+  return { moves: new Set(lines.map(line => line.moves[prefix.length])), name: lines[0]?.name || null };
+}
+function centralControl(p) {
+  const center = ['d4', 'e4', 'd5', 'e5'];
+  const score = { w: 0, b: 0 };
+  for (const side of ['w', 'b']) for (const sq of center) {
+    if (p.board[sq]?.[0] === side) score[side] += 2;
+    if (isSquareAttacked(p, sq, side)) score[side] += 1;
+  }
+  return score;
+}
+function principleFor(p, move, next, centerGain) {
+  const piece = p.board[move.from], type = typeOf(piece), side = colorOf(piece);
+  if (type === 'K' && Math.abs(coords(move.to)[0] - coords(move.from)[0]) === 2) return 'King safety: castling';
+  if (p.board[move.to] || (type === 'P' && move.to === p.enPassant)) return 'Tactical exchange: review the captured piece and recapture';
+  if (type === 'P' && ['d4','e4','d5','e5'].includes(move.to)) return 'Fights for the center';
+  const homeRank = side === 'w' ? '1' : '8';
+  if (['N','B'].includes(type) && move.from[1] === homeRank) return 'Develops a minor piece';
+  if (type === 'Q' && p.fullmoveNumber < 8) return 'Opening principle: develop minor pieces before the queen';
+  if (centerGain >= 2) return 'Improves central control';
+  if (centerGain <= -2) return 'Central control shifted away';
+  if (isInCheck(next, next.turn)) return 'Creates a direct check';
+  return 'Principle: improve piece activity and keep the king safe';
+}
+
+/** A quick white-perspective evaluation in centipawns, for the live advantage meter. */
+export function evaluatePosition(p){normalizePosition(p);return Math.round(evaluateWhite(p));}
+
+/** Review completed moves against a shallow local engine estimate. */
+export function analyzeGame(plies,onProgress=()=>{}){
+  const moves=[],scores=[{ply:0,score:evaluatePosition(plies[0]?.position||createInitialPosition())}];
+  const accuracy={w:[],b:[]},playedMoves=[];
+  plies.forEach((entry,index)=>{
+    const p=entry.position,move=entry.move;
+    if(!move)return;
+    const book=bookOptions(playedMoves),bookMove=book.moves.has(moveKey(move));
+    const suggested=getBotMove(p,2,{history:playedMoves}),chosenScore=evaluateWhite(applyUnchecked(p,move,false))*(p.turn==='w'?1:-1);
+    const suggestedScore=suggested?evaluateWhite(applyUnchecked(p,suggested,false))*(p.turn==='w'?1:-1):chosenScore;
+    const loss=Math.max(0,Math.round(suggestedScore-chosenScore));
+    const label=loss<=20?'Best':loss<=60?'Good':loss<=130?'Inaccuracy':loss<=300?'Mistake':'Blunder';
+    const points=Math.max(0,Math.round(100-Math.min(60,loss*.2)));
+    accuracy[p.turn].push(points);
+    const next=applyUnchecked(p,move,false),centerBefore=centralControl(p),centerAfter=centralControl(next);
+    const centerGain=((centerAfter.w-centerAfter.b)-(centerBefore.w-centerBefore.b))*(p.turn==='w'?1:-1);
+    const principle=principleFor(p,move,next,centerGain);
+    moves.push({ply:index+1,side:p.turn,move:`${move.from}–${move.to}${move.promotion?`=${move.promotion}`:''}`,best:suggested?`${suggested.from}–${suggested.to}${suggested.promotion?`=${suggested.promotion}`:''}`:'—',loss,label,book:bookMove,opening:bookMove?book.name:null,principle,centerGain,score:evaluatePosition(next)});
+    scores.push({ply:index+1,score:evaluatePosition(next)});
+    playedMoves.push(move);
+    onProgress(index+1,plies.length);
+  });
+  const average=values=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):0;
+  const opening=moves.find(move=>move.opening)?.opening||null;
+  return {moves,scores,opening,accuracy:{white:average(accuracy.w),black:average(accuracy.b)}};
+}
