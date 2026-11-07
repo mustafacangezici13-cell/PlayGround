@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101210">
+  <title>Checkmate Club — Play chess</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Checkmate Club home"><span class="brand-mark">♞</span><span>CHECKMATE<span class="brand-light"> CLUB</span></span></a>
+      <div class="top-meta"><span class="live-dot"></span> THE ONLINE LOUNGE <span class="meta-divider">·</span> <span id="clock">--:--</span></div>
+      <button class="icon-button" id="sound-toggle" aria-label="Toggle sound" title="Toggle sound">♫</button>
+    </header>
+
+    <main class="layout">
+      <section class="game-column" aria-label="Chess game">
+        <div class="opponent-bar player-bar">
+          <div class="player-identity">
+            <img id="bot-avatar" class="avatar avatar-large" alt="Opponent portrait">
+            <div class="player-copy"><div class="player-name-line"><span id="bot-name">Loading...</span><span class="rating-pill" id="bot-rating">—</span></div><div class="player-sub" id="bot-title">Choose your opponent</div></div>
+          </div>
+          <div class="captured" id="bot-captured" aria-label="Pieces captured by opponent"></div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="rank-labels" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+          <div class="chessboard" id="board" role="grid" aria-label="Chess board"></div>
+          <div class="file-labels" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+        </div>
+
+        <div class="opponent-bar bottom-player">
+          <div class="player-identity"><div class="you-avatar">YOU</div><div class="player-copy"><div class="player-name-line"><span>You</span><span class="rating-pill user-rating">1200</span></div><div class="player-sub" id="turn-status">Your move · White</div></div></div>
+          <div class="captured" id="user-captured" aria-label="Pieces captured by you"></div>
+        </div>
+
+        <div class="game-controls">
+          <button class="control-btn" id="undo-btn" title="Take back move"><span>↶</span> <span class="btn-label">Take back</span></button>
+          <div class="move-display" id="move-display">Make your opening move</div>
+          <button class="control-btn" id="flip-btn" title="Flip board"><span>⇅</span> <span class="btn-label">Flip</span></button>
+          <button class="control-btn new-game-btn" id="new-game-btn"><span>＋</span> <span class="btn-label">New game</span></button>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="sidebar-heading"><div><div class="eyebrow">FIND YOUR MATCH</div><h1>Choose your<br>challenger.</h1></div><span class="rosette">✳</span></div>
+        <p class="sidebar-intro">Ten personalities. Ten ratings. One board. Pick a rival and see how far you can climb.</p>
+        <div class="bot-list" id="bot-list" role="list" aria-label="Chess bot opponents"></div>
+        <div class="sidebar-foot"><span class="online-count"><i></i> 10 players in the club</span><span>♟ &nbsp;Built for the love of the game</span></div>
+      </aside>
+    </main>
+
+    <div class="promotion-backdrop" id="promotion-dialog" hidden>
+      <div class="promotion-card" role="dialog" aria-modal="true" aria-labelledby="promotion-title"><div class="eyebrow">A PAWN'S DESTINY</div><h2 id="promotion-title">Choose your promotion</h2><div class="promotion-options" id="promotion-options"></div></div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <footer>CHECKMATE CLUB <span>—</span> A quiet place for a loud checkmate.</footer>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
