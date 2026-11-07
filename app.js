@@ -1,4 +1,4 @@
-import { createInitialPosition, legalMoves, makeMove, getBotMove, getStatus, isInCheck, isSquareAttacked, analyzeGame } from './src/chess.js';
+import { createInitialPosition, legalMoves, makeMove, getBotMove, getStatus, isInCheck, analyzeGame } from './src/chess.js';
 
 // Ten fictional club members, each with a distinct playing style and challenge level.
 const bots = [
@@ -124,10 +124,6 @@ function renderBoard() {
   const kingInCheck = status.inCheck
     ? Object.keys(position.board).find(square => position.board[square] === `${position.turn}K`)
     : null;
-  const threatened = new Set(Object.keys(position.board).filter(square => {
-    const piece = position.board[square];
-    return piece[1] !== 'K' && isSquareAttacked(position, square, piece[0] === 'w' ? 'b' : 'w');
-  }));
   const ranks = flipped ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
   const fileOrder = flipped ? [...files].reverse() : [...files];
 
@@ -139,10 +135,9 @@ function renderBoard() {
     if (square === selectedSquare) classes.push('selected');
     if (lastMove && (square === lastMove.from || square === lastMove.to)) classes.push('last');
     if (square === kingInCheck) classes.push('check');
-    if (threatened.has(square)) classes.push('threatened');
     const isTarget = targets.has(square);
     const coords = `${columnIndex === 0 ? `<span class="coord rank">${rank + 1}</span>` : ''}${rowIndex === 7 ? `<span class="coord file">${file}</span>` : ''}`;
-    return `<button type="button" class="${classes.join(' ')}" data-square="${square}" aria-label="${square}${piece ? `, ${piece[0] === 'w' ? 'White' : 'Black'} ${pieceNames[piece[1]]}` : ''}${isTarget ? ', legal move' : ''}${threatened.has(square) ? ', under threat' : ''}" ${botThinking || status.over ? 'disabled' : ''}>${piece ? `<span class="piece ${piece[0] === 'w' ? 'white' : 'black'}">${pieceGlyphs[piece]}</span>` : ''}${isTarget ? `<span class="move-dot ${piece ? 'capture' : ''}"></span>` : ''}${threatened.has(square) ? '<span class="threat-mark" aria-hidden="true">!</span>' : ''}${coords}</button>`;
+    return `<button type="button" class="${classes.join(' ')}" data-square="${square}" aria-label="${square}${piece ? `, ${piece[0] === 'w' ? 'White' : 'Black'} ${pieceNames[piece[1]]}` : ''}${isTarget ? ', legal move' : ''}" ${botThinking || status.over ? 'disabled' : ''}>${piece ? `<span class="piece ${piece[0] === 'w' ? 'white' : 'black'}">${pieceGlyphs[piece]}</span>` : ''}${isTarget ? `<span class="move-dot ${piece ? 'capture' : ''}"></span>` : ''}${coords}</button>`;
   })).join('');
 
   board.querySelectorAll('[data-square]').forEach(button => {
