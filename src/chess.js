@@ -133,8 +133,13 @@ function moveOrderScore(p,m){
 }
 function orderedMoves(p,moves){return moves.sort((a,b)=>moveOrderScore(p,b)-moveOrderScore(p,a));}
 function sideEvaluation(p){return evaluateWhite(p)*(p.turn==='w'?1:-1);}
+function searchTimeExpired(state){
+  if((state.nodes&15)===0&&Date.now()>=state.deadline)state.aborted=true;
+  return state.aborted;
+}
 function quiescence(p,alpha,beta,ply,state,qply=0){
   if(++state.nodes>=state.nodeLimit)return sideEvaluation(p);
+  if(searchTimeExpired(state))return sideEvaluation(p);
   const key=repetitionKey(p),checked=isInCheck(p,p.turn);
   if((p.repetitionCounts?.[key]||0)+(state.pathCounts[key]||0)>=3||(p.halfmoveClock||0)>=100||isInsufficientMaterial(p))return 0;
   const allMoves=legalMoves(p);
@@ -151,12 +156,13 @@ function quiescence(p,alpha,beta,ply,state,qply=0){
     const child=applyUnchecked(p,m,false),childKey=repetitionKey(child);state.pathCounts[childKey]=(state.pathCounts[childKey]||0)+1;
     const score=-quiescence(child,-beta,-alpha,ply+1,state,qply+1);state.pathCounts[childKey]--;
     if(!state.pathCounts[childKey])delete state.pathCounts[childKey];
-    if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit)break;
+    if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit||state.aborted)break;
   }
   return best;
 }
 function search(p,depth,alpha,beta,ply,state){
   if(++state.nodes>=state.nodeLimit)return sideEvaluation(p);
+  if(searchTimeExpired(state))return sideEvaluation(p);
   const key=repetitionKey(p),checked=isInCheck(p,p.turn);
   if((p.repetitionCounts?.[key]||0)+(state.pathCounts[key]||0)>=3||(p.halfmoveClock||0)>=100||isInsufficientMaterial(p))return 0;
   const moves=legalMoves(p);if(!moves.length)return checked?-100000+ply:0;
@@ -165,7 +171,7 @@ function search(p,depth,alpha,beta,ply,state){
   for(const m of orderedMoves(p,moves)){
     const child=applyUnchecked(p,m,false),childKey=repetitionKey(child);state.pathCounts[childKey]=(state.pathCounts[childKey]||0)+1;
     const score=-search(child,depth-1,-beta,-alpha,ply+1,state);state.pathCounts[childKey]--;
-    if(!state.pathCounts[childKey])delete state.pathCounts[childKey];if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit)break;
+    if(!state.pathCounts[childKey])delete state.pathCounts[childKey];if(score>best)best=score;if(score>alpha)alpha=score;if(alpha>=beta||state.nodes>=state.nodeLimit||state.aborted)break;
   }
   return best;
 }
@@ -177,17 +183,18 @@ export function getBotMove(p,strength=2,options={}){
   if(level===1){const ranked=moves.map(m=>({move:m,score:evaluateWhite(applyUnchecked(p,m,false))*(p.turn==='w'?1:-1)+(moveOrderScore(p,m)>0?20:0)})).sort((a,b)=>b.score-a.score);
     const shortlist=ranked.slice(0,Math.max(1,Math.ceil(ranked.length*.55)));return shortlist[Math.floor(random()*shortlist.length)].move;}
   const configs={2:{depth:2,nodes:7000},3:{depth:3,nodes:16000},4:{depth:4,nodes:32000},5:{depth:5,nodes:55000},6:{depth:6,nodes:90000},7:{depth:7,nodes:130000}};
-  const {depth:maxDepth,nodes:nodeLimit}=configs[level];let best=moves[0],bestScore=-Infinity,completedDepth=0,rootScores=new Map();
+  const {depth:maxDepth,nodes:nodeLimit}=configs[level],deadline=Date.now()+Math.max(100,options.maxTimeMs??5000);let best=moves[0],bestScore=-Infinity,completedDepth=0,rootScores=new Map();
   for(let depth=1;depth<=maxDepth;depth++){
-    const state={nodes:0,nodeLimit,pathCounts:{}},ordered=orderedMoves(p,[...moves]);let iterationBest=ordered[0],iterationScore=-Infinity,alpha=-Infinity,beta=Infinity;const iterationScores=new Map();
+    const state={nodes:0,nodeLimit,deadline,aborted:false,pathCounts:{}},ordered=orderedMoves(p,[...moves]);let iterationBest=ordered[0],iterationScore=-Infinity,alpha=-Infinity,beta=Infinity;const iterationScores=new Map();
     for(const m of ordered){
+      if(Date.now()>=deadline){state.aborted=true;break;}
       const child=applyUnchecked(p,m,false),key=repetitionKey(child);state.pathCounts[key]=(state.pathCounts[key]||0)+1;
       const score=-search(child,depth-1,-beta,-alpha,1,state);state.pathCounts[key]--;if(!state.pathCounts[key])delete state.pathCounts[key];
       iterationScores.set(moveKey(m),score);
       if(score>iterationScore){iterationScore=score;iterationBest=m;}if(score>alpha)alpha=score;
-      if(state.nodes>=nodeLimit)break;
+      if(state.nodes>=nodeLimit||state.aborted)break;
     }
-    if(state.nodes>=nodeLimit&&depth>1)break;
+    if(state.aborted||(state.nodes>=nodeLimit&&depth>1))break;
     best=iterationBest;bestScore=iterationScore;rootScores=iterationScores;completedDepth=depth;
     if(Math.abs(iterationScore)>99000)break;
   }
