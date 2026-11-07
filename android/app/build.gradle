@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.playground.chessclub'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.playground.chessclub'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/webAssets'))
+}
+
+tasks.register('syncWebGame', Sync) {
+    from('../../index.html') { into 'www' }
+    from('../../style.css') { into 'www' }
+    from('../../app.js') { into 'www' }
+    from('../../src') {
+        into 'www/src'
+        include '*.js'
+    }
+    from('../../assets/portraits') { into 'www/assets/portraits' }
+    into layout.buildDirectory.dir('generated/webAssets')
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('syncWebGame')
+}
+
+tasks.register('copyDebugApk', Copy) {
+    from(layout.buildDirectory.file('outputs/apk/debug/app-debug.apk'))
+    into(rootProject.file('../dist'))
+    rename { 'ChessClub.apk' }
+}
+
+tasks.matching { it.name == 'assembleDebug' }.configureEach {
+    finalizedBy tasks.named('copyDebugApk')
+}
