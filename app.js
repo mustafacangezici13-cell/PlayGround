@@ -51,6 +51,7 @@ let botThinking = false;
 let botTurnToken = 0;
 let pendingPromotion = null;
 let audioContext = null;
+let soundEnabled = false;
 let reviewWorker = null;
 let reviewToken = 0;
 try {
@@ -213,27 +214,35 @@ function showPromotion(candidates) {
 }
 
 function playMoveSound(check = false) {
+  if (!soundEnabled) return;
   try {
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) return;
     audioContext ||= new Audio();
-    if (audioContext.state === 'suspended') audioContext.resume();
-    const now = audioContext.currentTime;
-    const notes = check ? [520, 760] : [230];
-    notes.forEach((frequency, index) => {
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      const start = now + index * 0.11;
-      oscillator.type = check ? 'triangle' : 'sine';
-      oscillator.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(check ? 0.12 : 0.08, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + (check ? 0.19 : 0.1));
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.start(start);
-      oscillator.stop(start + 0.2);
-    });
+    const context = audioContext;
+    const play = () => {
+      const now = context.currentTime;
+      const notes = check ? [520, 760] : [230];
+      notes.forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const start = now + index * 0.11;
+        oscillator.type = check ? 'triangle' : 'sine';
+        oscillator.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(check ? 0.12 : 0.08, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + (check ? 0.19 : 0.1));
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 0.2);
+      });
+    };
+    if (context.state === 'suspended') {
+      context.resume().then(play).catch(() => {});
+      return;
+    }
+    play();
   } catch { /* Audio is an optional browser enhancement. */ }
 }
 
@@ -378,6 +387,14 @@ $('close-review').addEventListener('click', () => {
 $('close-game-over').addEventListener('click', () => { $('game-over').hidden = true; });
 $('flip').addEventListener('click', () => { flipped = !flipped; renderBoard(); });
 $('restart').addEventListener('click', newGame);
+$('sound-toggle').addEventListener('click', event => {
+  soundEnabled = !soundEnabled;
+  const button = event.currentTarget;
+  button.setAttribute('aria-pressed', String(soundEnabled));
+  button.innerHTML = `${soundEnabled ? '🔊' : '🔇'} <span>Sound ${soundEnabled ? 'on' : 'off'}</span>`;
+  button.title = soundEnabled ? 'Turn move sounds off' : 'Turn move sounds on';
+  if (soundEnabled) playMoveSound();
+});
 $('voice-toggle').addEventListener('click', event => {
   voiceEnabled = !voiceEnabled;
   const button = event.currentTarget;
